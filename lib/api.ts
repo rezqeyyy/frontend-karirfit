@@ -22,12 +22,11 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
 export const api = {
   model: () => request<Model>("/api/model"),
   extractSkills: (text: string) => request<ExtractResponse>("/api/extract-skills", { text }),
-  recommend: (profile: Profile, session: string, consent: boolean, opts: { alpha?: number; includeAll?: boolean } = {}) =>
-    request<RecommendResponse>("/api/recommend", {
-      profile, session, consent, alpha: opts.alpha ?? null, include_all: opts.includeAll ?? true,
-    }),
-  explain: (profile: Profile, career: string, lang: Lang, session: string, consent: boolean, alpha?: number) =>
-    request<ExplainResponse>("/api/explain", { profile, career, lang, session, consent, alpha: alpha ?? null }),
+  // α is fixed by the backend (0.5, thesis Section 3.5.2); users cannot change it.
+  recommend: (profile: Profile, session: string, consent: boolean) =>
+    request<RecommendResponse>("/api/recommend", { profile, session, consent, include_all: true }),
+  explain: (profile: Profile, career: string, lang: Lang, session: string, consent: boolean) =>
+    request<ExplainResponse>("/api/explain", { profile, career, lang, session, consent }),
   rate: (session: string, career: string, rating: number) =>
     request<{ ok: boolean }>("/api/rating", { session, career, rating }),
 };

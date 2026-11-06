@@ -106,7 +106,7 @@ textarea { resize: vertical; min-height: 140px; }
 .wiz-nav { display: flex; justify-content: space-between; margin-top: 36px; padding-top: 20px; border-top: 1px solid var(--line); }
 
 /* results */
-.res-head { display: flex; justify-content: space-between; align-items: end; flex-wrap: wrap; gap: 12px; margin: 12px 0 24px; }
+.res-head { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; margin: 12px 0 24px; }
 .res-head h2 { font: 800 clamp(30px, 4.5vw, 48px)/1 var(--display); letter-spacing: -.03em; color: var(--ink); margin: 0; }
 .res-actions { display: flex; gap: 8px; }
 .res-grid { display: grid; grid-template-columns: minmax(300px, 400px) 1fr; gap: 28px; align-items: start; }
@@ -149,8 +149,6 @@ textarea { resize: vertical; min-height: 140px; }
 .how { margin-top: 36px; background: var(--card); border-radius: 14px; border: 1.5px solid var(--line); padding: 14px 20px; }
 .how summary { cursor: pointer; font-weight: 700; font-family: var(--display); font-size: 18px; }
 .how code { background: var(--paper); padding: 1px 6px; border-radius: 4px; font-size: 14px; }
-.alpha { display: flex; gap: 12px; align-items: center; margin: 14px 0; font-size: 14px; }
-.alpha input { width: 180px; }
 
 .foot { text-align: center; color: var(--muted); font-size: 13px; padding: 24px 16px 40px; }
 

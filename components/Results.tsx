@@ -13,14 +13,13 @@ export function Results() {
   const [error, setError] = useState<string | null>(null);
   const [current, setCurrent] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
-  const [alpha, setAlpha] = useState(0.5);
 
   const profileKey = JSON.stringify(profile);
   useEffect(() => {
     if (!answers.interests.length) return;
     let alive = true;
     setError(null);
-    api.recommend(profile, session, answers.consent, { alpha, includeAll: true })
+    api.recommend(profile, session, answers.consent)
       .then(r => {
         if (!alive) return;
         setData(r);
@@ -29,7 +28,7 @@ export function Results() {
       .catch(e => alive && setError(String((e as Error).message)));
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profileKey, alpha, session]);
+  }, [profileKey, session]);
 
   if (!answers.interests.length) {
     return (
@@ -66,18 +65,13 @@ export function Results() {
             </>
           )}
         </div>
-        <CareerDetail key={selected.career} result={selected} alpha={alpha} />
+        <CareerDetail key={selected.career} result={selected} />
       </div>
 
       <details className="how">
         <summary>{t.how_title}</summary>
         <p>{t.how_p1}</p>
         <p>{t.how_p2}</p>
-        <label className="alpha">
-          <span>{t.alpha_label}</span>
-          <input type="range" min={0.3} max={0.9} step={0.2} value={alpha} onChange={e => setAlpha(Number(e.target.value))} />
-          <output>{alpha.toFixed(1)}</output>
-        </label>
         <p className="fine">{String(model?.demand_source ?? "").includes("measured")
             ? t.demand_measured(model?.data_label || "job-ad data", model?.n_ads_train)
             : t.demand_seed}</p>
@@ -112,7 +106,7 @@ function RankList({ title, hint, items, current, onPick }: {
 
 const RATINGS_KEY = "karirfit:v1:ratings";
 
-function CareerDetail({ result: r, alpha }: { result: CareerResult; alpha: number }) {
+function CareerDetail({ result: r }: { result: CareerResult }) {
   const { t, lang, profile, session, answers, careerName, skillName } = useApp();
   const [exp, setExp] = useState<ExplainResponse | null>(null);
   const [expErr, setExpErr] = useState<string | null>(null);
@@ -125,12 +119,12 @@ function CareerDetail({ result: r, alpha }: { result: CareerResult; alpha: numbe
   useEffect(() => {
     let alive = true;
     setExp(null); setExpErr(null);
-    api.explain(profile, r.career, lang, session, answers.consent, alpha)
+    api.explain(profile, r.career, lang, session, answers.consent)
       .then(x => alive && setExp(x))
       .catch(e => alive && setExpErr(String((e as Error).message)));
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [r.career, lang, alpha]);
+  }, [r.career, lang]);
 
   const rate = (n: number) => {
     setRating(n);
