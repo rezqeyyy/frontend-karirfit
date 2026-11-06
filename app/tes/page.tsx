@@ -1,10 +1,11 @@
 "use client";
 
+import { AuthGate } from "@/components/AuthGate";
 import { useApp } from "@/components/AppProvider";
 import { Wizard } from "@/components/Wizard";
 
 export default function TestPage() {
   const { hydrated } = useApp();
-  // wait for saved answers to load so the wizard does not flash empty
-  return hydrated ? <Wizard /> : null;
+  // login is required before the test (FR1); wait for saved answers so the wizard does not flash empty
+  return <AuthGate>{hydrated ? <Wizard /> : null}</AuthGate>;
 }

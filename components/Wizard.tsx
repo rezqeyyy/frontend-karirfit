@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { api } from "@/lib/api";
-import type { Grade, Level } from "@/lib/types";
+import type { Grade, Interest, Level } from "@/lib/types";
 import { useApp } from "./AppProvider";
 import { ServerError } from "./Header";
 
@@ -20,7 +20,12 @@ export function Wizard() {
     if (n > 1 && !answers.interests.length) { setWarn(true); return; }
     setWarn(false); setStep(n); window.scrollTo({ top: 0 });
   };
-  const next = () => (step < 5 ? goto(step + 1) : answers.interests.length ? router.push("/hasil") : setWarn(true));
+  const LAST = 6;
+  const finish = () => {
+    try { sessionStorage.setItem("karirfit:submit", "1"); } catch { /* ignore */ }   // results page saves this test to history
+    router.push("/hasil");
+  };
+  const next = () => (step < LAST ? goto(step + 1) : answers.interests.length ? finish() : setWarn(true));
 
   if (!model) return <ServerError />;
 
@@ -39,15 +44,16 @@ export function Wizard() {
 
       {step === 1 && <StepInterests />}
       {step === 2 && <StepSkills />}
-      {step === 3 && <StepExperience />}
-      {step === 4 && <StepCourses />}
-      {step === 5 && <StepSummary />}
+      {step === 3 && <StepSoft />}
+      {step === 4 && <StepExperience />}
+      {step === 5 && <StepCourses />}
+      {step === 6 && <StepSummary />}
 
       {warn && <p className="notice" role="alert">{t.need_interest}</p>}
 
       <nav className="wiz-nav">
         <button className="btn ghost" style={{ visibility: step === 1 ? "hidden" : "visible" }} onClick={() => goto(step - 1)}>{t.back}</button>
-        <button className="btn primary" onClick={next}>{step === 5 ? t.see : t.next}</button>
+        <button className="btn primary" onClick={next}>{step === LAST ? t.see : t.next}</button>
       </nav>
     </section>
   );
@@ -63,17 +69,28 @@ function StepInterests() {
   const toggle = (id: string) => update(a => ({
     interests: a.interests.includes(id) ? a.interests.filter(x => x !== id) : a.interests.length < 3 ? [...a.interests, id] : a.interests,
   }));
+  // an area counts as "general" when most of its careers are non-IT
+  const isGeneral = (cs: string[]) => cs.filter(c => careers[c]?.group === "non_it").length * 2 > cs.length;
+  const groups: [string, Interest[]][] = [
+    [t.s1_it, model!.interests.filter(i => !isGeneral(i.careers))],
+    [t.s1_general, model!.interests.filter(i => isGeneral(i.careers))],
+  ];
   return (
     <div className="step">
       <StepHead title={t.s1_title} hint={t.s1_hint} />
-      <div className="chips interests">
-        {model!.interests.map(i => (
-          <button key={i.id} className="chip" aria-pressed={answers.interests.includes(i.id)} onClick={() => toggle(i.id)}>
-            {lang === "id" ? i.name_id : i.name_en}
-            <small>{i.careers.map(c => careerName(careers[c])).join(", ")}</small>
-          </button>
-        ))}
-      </div>
+      {groups.map(([label, items]) => items.length > 0 && (
+        <div key={label} className="group">
+          <h3 className="group-h">{label}</h3>
+          <div className="chips interests">
+            {items.map(i => (
+              <button key={i.id} className="chip" aria-pressed={answers.interests.includes(i.id)} onClick={() => toggle(i.id)}>
+                {lang === "id" ? i.name_id : i.name_en}
+                <small>{i.careers.map(c => careerName(careers[c])).join(", ")}</small>
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -116,6 +133,34 @@ function StepSkills() {
         })}
       </div>
       <p className="picked">{t.picked(Object.keys(answers.skills).length)}</p>
+    </div>
+  );
+}
+
+function StepSoft() {
+  const { t, model, answers, update, lang } = useApp();
+  const setLevel = (id: string, l: Level) => update(a => {
+    const soft = { ...(a.softSkills ?? {}) };
+    if (soft[id] === l) delete soft[id]; else soft[id] = l;
+    return { softSkills: soft };
+  });
+  return (
+    <div className="step">
+      <StepHead title={t.s_soft_title} hint={t.s_soft_hint} />
+      <div className="skill-list">
+        {(model!.soft_skills ?? []).map(s => {
+          const lv = answers.softSkills?.[s.id];
+          const name = lang === "id" ? s.name_id : s.name_en;
+          return (
+            <div key={s.id} className={"skill" + (lv ? " on" : "")}>
+              <span className="nm">{name}</span>
+              <div className="levels" role="group" aria-label={name}>
+                {LEVELS.map(l => <button key={l} aria-pressed={lv === l} onClick={() => setLevel(s.id, l)}>{t.lv[l]}</button>)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -169,21 +214,46 @@ function StepExperience() {
 
 function StepCourses() {
   const { t, model, answers, update, lang } = useApp();
+  const cats = model!.course_categories ?? [];
+  const [cat, setCat] = useState<string>(() => {
+    const taken = model!.courses.find(c => answers.courses[c.id]);
+    return taken?.category ?? cats[0]?.id ?? "it";
+  });
+  const [q, setQ] = useState("");
   const setGrade = (id: string, g: string) => update(a => {
     const courses = { ...a.courses };
     if (g) courses[id] = g as Grade; else delete courses[id];
     return { courses };
   });
+  const name = (c: { name_id: string; name_en: string }) => (lang === "id" ? c.name_id : c.name_en);
+  const list = model!.courses.filter(c => (q ? name(c).toLowerCase().includes(q.toLowerCase()) : (c.category ?? "it") === cat));
+  const count = (id: string) => model!.courses.filter(c => (c.category ?? "it") === id && answers.courses[c.id]).length;
   return (
     <div className="step">
       <StepHead title={t.s4_title} hint={t.s4_hint} />
+      <label className="field">
+        <span>{t.f_major_wiz}</span>
+        <input value={answers.major ?? ""} onChange={e => update({ major: e.target.value })} placeholder={t.f_major_ph} />
+      </label>
+      <div className="skill-tools">
+        <input type="search" value={q} onChange={e => setQ(e.target.value)} placeholder={t.search_course} aria-label={t.search_course} />
+        {!q && (
+          <div className="cats" role="tablist">
+            {cats.map(c => (
+              <button key={c.id} role="tab" aria-selected={c.id === cat} onClick={() => setCat(c.id)}>
+                {name(c)}{count(c.id) ? ` (${count(c.id)})` : ""}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <div className="courses">
-        {model!.courses.map(c => {
-          const name = lang === "id" ? c.name_id : c.name_en, g = answers.courses[c.id] ?? "";
+        {list.map(c => {
+          const g = answers.courses[c.id] ?? "";
           return (
             <label key={c.id} className={"course" + (g ? " on" : "")}>
-              <span>{name}</span>
-              <select value={g} onChange={e => setGrade(c.id, e.target.value)} aria-label={name}>
+              <span>{name(c)}</span>
+              <select value={g} onChange={e => setGrade(c.id, e.target.value)} aria-label={name(c)}>
                 <option value="">{t.grade_none}</option>
                 {GRADES.map(x => <option key={x} value={x}>{x}</option>)}
               </select>
@@ -196,7 +266,7 @@ function StepCourses() {
 }
 
 function StepSummary() {
-  const { t, model, answers, update, careerName, skillName, lang } = useApp();
+  const { t, model, answers, update, careerName, skillName, softName, lang } = useApp();
   const join = (a: string[]) => (a.length ? a.join(", ") : t.empty);
   const interests = model!.interests.filter(i => answers.interests.includes(i.id)).map(i => (lang === "id" ? i.name_id : i.name_en));
   const courses = model!.courses.filter(c => answers.courses[c.id]).map(c => `${lang === "id" ? c.name_id : c.name_en} (${answers.courses[c.id]})`);
@@ -214,14 +284,13 @@ function StepSummary() {
         <dl>
           <dt>{t.sum_interests}</dt><dd>{join(interests)}</dd>
           <dt>{t.sum_skills}</dt><dd>{join(Object.entries(answers.skills).map(([s, l]) => `${skillName(s)} (${t.lv[l]})`))}</dd>
+          <dt>{t.sum_soft}</dt><dd>{join(Object.entries(answers.softSkills ?? {}).map(([s, l]) => `${softName(s)} (${t.lv[l]})`))}</dd>
           <dt>{t.sum_exp}</dt><dd>{join(answers.expSkills.map(skillName))}</dd>
+          <dt>{t.sum_major}</dt><dd>{answers.major || t.empty}</dd>
           <dt>{t.sum_courses}</dt><dd>{join(courses)}</dd>
         </dl>
       </div>
-      <label className="consent">
-        <input type="checkbox" checked={answers.consent} onChange={e => update({ consent: e.target.checked })} />
-        <span>{t.consent}</span>
-      </label>
+      <p className="fine">{t.consent_note}</p>
     </div>
   );
 }

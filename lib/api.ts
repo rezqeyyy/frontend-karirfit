@@ -1,5 +1,6 @@
 import type {
-  CompareResponse, ExplainResponse, ExtractResponse, Health, KbList, KbStatus, Lang, Model, Profile, RecommendResponse,
+  ChatResponse, ChatTurn, CompareResponse, ExplainResponse, ExtractResponse, Health, KbList, KbStatus, Lang, Model,
+  Profile, RecommendResponse,
 } from "./types";
 
 export const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
@@ -8,7 +9,12 @@ export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
+// Supabase access token of the signed-in user, sent to FastAPI as "Authorization: Bearer ..."
+let authToken: string | null = null;
+export function setAuthToken(token: string | null) { authToken = token; }
+
 async function request<T>(path: string, body?: unknown, init: RequestInit = {}): Promise<T> {
+  if (authToken) init = { ...init, headers: { Authorization: `Bearer ${authToken}`, ...(init.headers || {}) } };
   let res: Response;
   const opts: RequestInit = body === undefined
     ? { cache: "no-store", ...init }
@@ -41,6 +47,8 @@ export const api = {
   rate: (session: string, career: string, rating: number) =>
     request<{ ok: boolean }>("/api/rating", { session, career, rating }),
   health: () => request<Health>("/api/health"),
+  chat: (messages: ChatTurn[], profile: Profile, career: string | null, lang: Lang, session: string, consent: boolean) =>
+    request<ChatResponse>("/api/chat", { messages, profile, career, lang, session, consent }),
 
   // user evaluation (backend EVAL_MODE=1, thesis Sections 3.6.4-3.6.6)
   compare: (profile: Profile, session: string) =>

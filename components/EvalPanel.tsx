@@ -11,10 +11,10 @@ const DONE_KEY = "karirfit:v1:eval";
  *  relevance ratings of the 7 recommended careers (3.6.4), the blind A/B comparison of the normal
  *  ranking vs the ranking without interest fit (3.6.4) and the SUS questionnaire (3.6.6). */
 export function EvalPanel({ recommended, ratings }: { recommended: CareerResult[]; ratings: Record<string, number> }) {
-  const { t, answers } = useApp();
+  const { t, consent } = useApp();
   const rated = recommended.filter(r => ratings[r.career]).length;
 
-  if (!answers.consent) {
+  if (!consent) {
     return (
       <section className="eval">
         <h3>{t.ev_title}</h3>

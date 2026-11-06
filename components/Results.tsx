@@ -4,14 +4,17 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { pct } from "@/lib/i18n";
+import { saveAssessment } from "@/lib/supabase";
 import type { CareerResult, ExplainResponse, RecommendResponse } from "@/lib/types";
 import { useApp } from "./AppProvider";
+import { ChatWidget } from "./ChatWidget";
 import { EvalPanel } from "./EvalPanel";
 
 const RATINGS_KEY = "karirfit:v1:ratings";
 
 export function Results() {
-  const { t, answers, profile, session, model, health } = useApp();
+  const { t, answers, profile, session, model, health, consent } = useApp();
+  const [saved, setSaved] = useState<string | null>(null);
   const [ratings, setRatings] = useState<Record<string, number>>({});
   useEffect(() => { try { setRatings(JSON.parse(localStorage.getItem(RATINGS_KEY) || "{}")); } catch { /* ignore */ } }, []);
   const rate = (career: string, n: number) => {
@@ -32,11 +35,15 @@ export function Results() {
     if (!answers.interests.length) return;
     let alive = true;
     setError(null);
-    api.recommend(profile, session, answers.consent)
+    api.recommend(profile, session, consent)
       .then(r => {
         if (!alive) return;
         setData(r);
-        setCurrent(c => c ?? (answers.target || r.primary[0]?.career || null));
+        setCurrent(c => c ?? (answers.target || r.top[0]?.career || null));
+        // a test just finished in the wizard is saved once to the user's history (Supabase)
+        let fresh = false;
+        try { fresh = sessionStorage.getItem("karirfit:submit") === "1"; sessionStorage.removeItem("karirfit:submit"); } catch { /* ignore */ }
+        if (fresh) saveAssessment(answers, r).then(() => setSaved(t.h_saved)).catch(e => setSaved(t.h_save_error + (e as Error).message));
       })
       .catch(e => alive && setError(String((e as Error).message)));
     return () => { alive = false; };
@@ -54,8 +61,8 @@ export function Results() {
   if (error) return <p className="notice error" role="alert">{error}</p>;
   if (!data) return <p className="loading">{t.r_loading}</p>;
 
-  const all = data.all ?? [...data.primary, ...data.alternative];
-  const selected = all.find(r => r.career === current) ?? data.primary[0];
+  const all = data.all ?? [...data.top, ...data.primary, ...data.alternative, ...data.non_it];
+  const selected = all.find(r => r.career === current) ?? data.top[0];
 
   return (
     <section className="results">
@@ -63,7 +70,7 @@ export function Results() {
         <h2>{t.r_title}</h2>
         <div className="res-actions">
           <Link className="btn ghost" href="/tes">{t.r_edit}</Link>
-          <button className="btn ghost" onClick={() => setShowAll(v => !v)}>{showAll ? t.r_less : t.r_all}</button>
+          <button className="btn ghost" onClick={() => setShowAll(v => !v)}>{showAll ? t.r_less : t.r_all_n(all.length)}</button>
         </div>
       </div>
 
@@ -73,15 +80,23 @@ export function Results() {
             <RankList title={t.r_all_title} items={all} current={selected.career} onPick={setCurrent} />
           ) : (
             <>
-              <RankList title={t.r_primary} hint={t.r_primary_hint} items={data.primary} current={selected.career} onPick={setCurrent} />
-              <RankList title={t.r_alt} hint={t.r_alt_hint} items={data.alternative} current={selected.career} onPick={setCurrent} />
+              <RankList title={t.r_top} hint={t.r_top_hint} items={data.top} current={selected.career} onPick={setCurrent} />
+              <details className="groups">
+                <summary>{t.r_groups}</summary>
+                <RankList title={t.r_primary} hint={t.r_primary_hint} items={data.primary} current={selected.career} onPick={setCurrent} />
+                <RankList title={t.r_alt} hint={t.r_alt_hint} items={data.alternative} current={selected.career} onPick={setCurrent} />
+                <RankList title={t.r_nonit} hint={t.r_nonit_hint} items={data.non_it ?? []} current={selected.career} onPick={setCurrent} />
+              </details>
             </>
           )}
         </div>
         <CareerDetail key={selected.career} result={selected} rating={ratings[selected.career] ?? null} onRate={n => rate(selected.career, n)} />
       </div>
 
+      {saved && <p className="notice" role="status">{saved}</p>}
+
       {health?.eval_mode && <EvalPanel recommended={[...data.primary, ...data.alternative]} ratings={ratings} />}
+      <ChatWidget career={selected.career} />
 
       <details className="how">
         <summary>{t.how_title}</summary>
@@ -120,14 +135,18 @@ function RankList({ title, hint, items, current, onPick }: {
 }
 
 function CareerDetail({ result: r, rating, onRate }: { result: CareerResult; rating: number | null; onRate: (n: number) => void }) {
-  const { t, lang, profile, session, answers, careerName, skillName } = useApp();
+  const { t, lang, profile, session, consent, answers, careerName, skillName, softName, model } = useApp();
+  const courseLabel = (id: string | undefined, fallback: string) => {
+    const c = model?.courses.find(x => x.id === id);
+    return c ? `${lang === "id" ? c.name_id : c.name_en} (${answers.courses[c.id] ?? ""})` : fallback;
+  };
   const [exp, setExp] = useState<ExplainResponse | null>(null);
   const [expErr, setExpErr] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
     setExp(null); setExpErr(null);
-    api.explain(profile, r.career, lang, session, answers.consent)
+    api.explain(profile, r.career, lang, session, consent)
       .then(x => alive && setExp(x))
       .catch(e => alive && setExpErr(String((e as Error).message)));
     return () => { alive = false; };
@@ -161,7 +180,7 @@ function CareerDetail({ result: r, rating, onRate }: { result: CareerResult; rat
                   <div className="ev">
                     {t.src[x.evidence.source]}
                     {x.evidence.source === "self" ? `: ${t.lv[x.evidence.detail as keyof typeof t.lv] ?? x.evidence.detail}`
-                      : x.evidence.source === "course" ? `: ${x.evidence.detail}` : ""}
+                      : x.evidence.source === "course" ? `: ${courseLabel(x.evidence.course, x.evidence.detail)}` : ""}
                   </div>
                 )}
               </td>
@@ -171,6 +190,22 @@ function CareerDetail({ result: r, rating, onRate }: { result: CareerResult; rat
           ))}
         </tbody>
       </table>
+
+      {r.soft?.length > 0 && (
+        <>
+          <h4>{t.soft_title}</h4>
+          <p className="hint small">{t.soft_hint}</p>
+          <ul className="soft">
+            {r.soft.map(x => (
+              <li key={x.skill}>
+                <span>{softName(x.skill)}</span>
+                <span className="ev">{t.demand_of(pct(x.demand))}</span>
+                <span className={"tag " + (x.have ? "ok" : "gap")}>{x.have ? t.soft_have : t.soft_dev}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
 
       <h4>{t.explain}</h4>
       <div className="explain">{exp ? exp.text : expErr ?? t.loading}</div>

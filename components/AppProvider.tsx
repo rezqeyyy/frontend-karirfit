@@ -1,11 +1,17 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { api, ApiError, API_URL } from "@/lib/api";
+import { api, ApiError, API_URL, setAuthToken } from "@/lib/api";
+import { supabase } from "@/lib/supabase";
+import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { DICTS, type Dict } from "@/lib/i18n";
 import type { Answers, Career, Health, Lang, Model, Profile } from "@/lib/types";
 
-const EMPTY: Answers = { interests: [], skills: {}, experience: "", expSkills: [], expPhrases: {}, courses: {}, target: "", consent: false };
+const EMPTY: Answers = {
+  interests: [], skills: {}, softSkills: {}, major: "", experience: "", expSkills: [], expPhrases: {}, courses: {}, target: "", consent: false,
+};
+
+export interface AuthUser { id: string; email: string; name: string; consent: boolean }
 const KEY = "karirfit:v1";
 
 function readStore<T>(key: string, fallback: T): T {
@@ -24,6 +30,11 @@ interface Ctx {
   profile: Profile;
   careerName: (c: Pick<Career, "name_en" | "name_id">) => string;
   skillName: (id: string) => string;
+  softName: (id: string) => string;
+  // Supabase account (login is required before the test, FR1)
+  user: AuthUser | null; authReady: boolean; recovery: boolean; setRecovery: (v: boolean) => void;
+  signOut: () => Promise<void>;
+  consent: boolean;   // given at registration; required before anything is logged
 }
 
 const AppContext = createContext<Ctx | null>(null);
@@ -37,6 +48,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [modelError, setModelError] = useState<string | null>(null);
   const [waking, setWaking] = useState(false);
   const [health, setHealth] = useState<Health | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [recovery, setRecovery] = useState(false);
+
+  // Supabase session: keep the access token in the API client so FastAPI can verify the user
+  useEffect(() => {
+    if (!supabase) { setAuthReady(true); return; }
+    const apply = (sess: Session | null) => {
+      setAuthToken(sess?.access_token ?? null);
+      const m = sess?.user.user_metadata ?? {};
+      setUser(sess ? { id: sess.user.id, email: sess.user.email ?? "", name: String(m.name ?? ""), consent: Boolean(m.consent) } : null);
+    };
+    supabase.auth.getSession().then(({ data }: { data: { session: Session | null } }) => { apply(data.session); setAuthReady(true); });
+    const { data: sub } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, sess: Session | null) => {
+      if (event === "PASSWORD_RECOVERY") setRecovery(true);
+      apply(sess);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  const signOut = useCallback(async () => {
+    if (supabase) await supabase.auth.signOut();
+    setAuthToken(null); setUser(null);
+  }, []);
 
   // restore from localStorage after mount (avoids SSR/client mismatch)
   useEffect(() => {
@@ -87,18 +122,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<Ctx>(() => {
     const skillNames = Object.fromEntries((model?.skills ?? []).map(s => [s.id, s.name]));
+    const softNames = Object.fromEntries((model?.soft_skills ?? []).map(s => [s.id, lang === "id" ? s.name_id : s.name_en]));
     return {
       lang, setLang, t: DICTS[lang],
       model, modelError: modelError && DICTS[lang].err_server(API_URL), reloadModel: loadModel, waking, health,
-      answers, update, reset, hydrated, session,
+      answers, update, reset, hydrated, session: user?.id ?? session,
       profile: {
-        courses: answers.courses, skills: answers.skills, experience_skills: answers.expSkills,
-        interests: answers.interests, target_career: answers.target || null,
+        courses: answers.courses, skills: answers.skills, soft_skills: answers.softSkills ?? {},
+        experience_skills: answers.expSkills, interests: answers.interests, target_career: answers.target || null,
+        major: answers.major || null,
       },
       careerName: c => (lang === "id" ? c.name_id : c.name_en),
       skillName: id => skillNames[id] ?? id,
+      softName: id => softNames[id] ?? id,
+      user, authReady, recovery, setRecovery, signOut,
+      consent: Boolean(user?.consent),
     };
-  }, [lang, setLang, model, modelError, loadModel, waking, health, answers, update, reset, hydrated, session]);
+  }, [lang, setLang, model, modelError, loadModel, waking, health, answers, update, reset, hydrated, session, user, authReady, recovery, signOut]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
