@@ -45,8 +45,21 @@ export interface Passage { id: string; text: string; source: string; score: numb
 export interface ExplainResponse {
   career: string; text: string; model: string; mode: "rag" | "llm_no_context" | "template";
   passages: Passage[]; notice?: string; prompt_version: string;
-  check?: { cited: string[]; unknown_citations: string[]; supported_ratio: number | null };
+  check?: { n_claims: number; n_supported: number; evidence_support: number | null; four_parts: boolean; gaps_named: number; gaps_correct: boolean };
 }
+
+export interface Health {
+  ok: boolean; rag: boolean; eval_mode: boolean; public_mode: boolean;
+  demand_source?: string; data_label?: string | null; storage?: string;
+}
+
+export interface ShortCareer { career: string; name_id: string; name_en: string }
+export interface ShortRanking { primary: ShortCareer[]; alternative: ShortCareer[] }
+export interface CompareResponse { A: ShortRanking; B: ShortRanking; token: string; same: boolean }
+
+export interface KbDocument { file: string; doc_type: string; careers: string; source: string; access: string; id_prefix: string; present: boolean }
+export interface KbStatus { state: "idle" | "running" | "done" | "error"; message: string; finished: number | null; index_ready?: boolean }
+export interface KbList { documents: KbDocument[]; index_ready: boolean; n_chunks: number; careers: string[]; rebuild: KbStatus; note: string }
 
 /** Answers kept in the browser while the user fills the test. */
 export interface Answers {

@@ -6,9 +6,22 @@ import { api } from "@/lib/api";
 import { pct } from "@/lib/i18n";
 import type { CareerResult, ExplainResponse, RecommendResponse } from "@/lib/types";
 import { useApp } from "./AppProvider";
+import { EvalPanel } from "./EvalPanel";
+
+const RATINGS_KEY = "karirfit:v1:ratings";
 
 export function Results() {
-  const { t, answers, profile, session, model } = useApp();
+  const { t, answers, profile, session, model, health } = useApp();
+  const [ratings, setRatings] = useState<Record<string, number>>({});
+  useEffect(() => { try { setRatings(JSON.parse(localStorage.getItem(RATINGS_KEY) || "{}")); } catch { /* ignore */ } }, []);
+  const rate = (career: string, n: number) => {
+    setRatings(prev => {
+      const next = { ...prev, [career]: n };
+      try { localStorage.setItem(RATINGS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+    api.rate(session, career, n).catch(() => {});
+  };
   const [data, setData] = useState<RecommendResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [current, setCurrent] = useState<string | null>(null);
@@ -65,8 +78,10 @@ export function Results() {
             </>
           )}
         </div>
-        <CareerDetail key={selected.career} result={selected} />
+        <CareerDetail key={selected.career} result={selected} rating={ratings[selected.career] ?? null} onRate={n => rate(selected.career, n)} />
       </div>
+
+      {health?.eval_mode && <EvalPanel recommended={[...data.primary, ...data.alternative]} ratings={ratings} />}
 
       <details className="how">
         <summary>{t.how_title}</summary>
@@ -104,17 +119,10 @@ function RankList({ title, hint, items, current, onPick }: {
   );
 }
 
-const RATINGS_KEY = "karirfit:v1:ratings";
-
-function CareerDetail({ result: r }: { result: CareerResult }) {
+function CareerDetail({ result: r, rating, onRate }: { result: CareerResult; rating: number | null; onRate: (n: number) => void }) {
   const { t, lang, profile, session, answers, careerName, skillName } = useApp();
   const [exp, setExp] = useState<ExplainResponse | null>(null);
   const [expErr, setExpErr] = useState<string | null>(null);
-  const [rating, setRating] = useState<number | null>(null);
-
-  useEffect(() => {
-    try { setRating((JSON.parse(localStorage.getItem(RATINGS_KEY) || "{}") as Record<string, number>)[r.career] ?? null); } catch { /* ignore */ }
-  }, [r.career]);
 
   useEffect(() => {
     let alive = true;
@@ -125,15 +133,6 @@ function CareerDetail({ result: r }: { result: CareerResult }) {
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [r.career, lang]);
-
-  const rate = (n: number) => {
-    setRating(n);
-    try {
-      const all = JSON.parse(localStorage.getItem(RATINGS_KEY) || "{}") as Record<string, number>;
-      localStorage.setItem(RATINGS_KEY, JSON.stringify({ ...all, [r.career]: n }));
-    } catch { /* ignore */ }
-    api.rate(session, r.career, n).catch(() => {});
-  };
 
   const rows = [
     ...r.matched.map(x => ({ ...x, ok: true as const })),
@@ -191,7 +190,7 @@ function CareerDetail({ result: r }: { result: CareerResult }) {
       <div className="rate">
         <span>{t.rate_q}</span>
         {[1, 2, 3, 4, 5].map(n => (
-          <button key={n} aria-pressed={rating === n} aria-label={String(n)} onClick={() => rate(n)}>{n}</button>
+          <button key={n} aria-pressed={rating === n} aria-label={String(n)} onClick={() => onRate(n)}>{n}</button>
         ))}
         {rating && <span>{t.rated}</span>}
       </div>
