@@ -11,6 +11,14 @@ const EMPTY: Answers = {
   interests: [], skills: {}, softSkills: {}, major: "", experience: "", expSkills: [], expPhrases: {}, courses: {}, target: "", consent: false,
 };
 
+/** Profile sent to the API, built from the answers kept in the browser. */
+export function toProfile(a: Answers): Profile {
+  return {
+    courses: a.courses ?? {}, skills: a.skills ?? {}, soft_skills: a.softSkills ?? {},
+    experience_skills: a.expSkills ?? [], interests: a.interests ?? [], target_career: a.target || null, major: a.major || null,
+  };
+}
+
 export interface AuthUser { id: string; email: string; name: string; consent: boolean }
 const KEY = "karirfit:v1";
 
@@ -35,6 +43,9 @@ interface Ctx {
   user: AuthUser | null; authReady: boolean; recovery: boolean; setRecovery: (v: boolean) => void;
   signOut: () => Promise<void>;
   consent: boolean;   // given at registration; required before anything is logged
+  // career assistant (shown on every page once logged in)
+  chatOpen: boolean; setChatOpen: (v: boolean) => void;
+  chatCareer: string | null; setChatCareer: (c: string | null) => void;
 }
 
 const AppContext = createContext<Ctx | null>(null);
@@ -51,6 +62,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [recovery, setRecovery] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatCareer, setChatCareer] = useState<string | null>(null);
 
   // Supabase session: keep the access token in the API client so FastAPI can verify the user
   useEffect(() => {
@@ -127,18 +140,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       lang, setLang, t: DICTS[lang],
       model, modelError: modelError && DICTS[lang].err_server(API_URL), reloadModel: loadModel, waking, health,
       answers, update, reset, hydrated, session: user?.id ?? session,
-      profile: {
-        courses: answers.courses, skills: answers.skills, soft_skills: answers.softSkills ?? {},
-        experience_skills: answers.expSkills, interests: answers.interests, target_career: answers.target || null,
-        major: answers.major || null,
-      },
+      profile: toProfile(answers),
       careerName: c => (lang === "id" ? c.name_id : c.name_en),
       skillName: id => skillNames[id] ?? id,
       softName: id => softNames[id] ?? id,
       user, authReady, recovery, setRecovery, signOut,
       consent: Boolean(user?.consent),
+      chatOpen, setChatOpen, chatCareer, setChatCareer,
     };
-  }, [lang, setLang, model, modelError, loadModel, waking, health, answers, update, reset, hydrated, session, user, authReady, recovery, signOut]);
+  }, [lang, setLang, model, modelError, loadModel, waking, health, answers, update, reset, hydrated, session, user, authReady, recovery, signOut, chatOpen, chatCareer]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

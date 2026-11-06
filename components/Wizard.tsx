@@ -31,6 +31,10 @@ export function Wizard() {
 
   return (
     <section className="wizard">
+      <div className="progress-m" aria-hidden="true">
+        <span>{t.step_of(step, LAST)} · <b>{t.steps[step - 1]}</b></span>
+        <div className="bar"><i style={{ width: `${(step / LAST) * 100}%` }} /></div>
+      </div>
       <ol className="progress" aria-label="Steps">
         {t.steps.map((name, i) => {
           const n = i + 1;
@@ -67,7 +71,7 @@ function StepInterests() {
   const { t, model, answers, update, careerName, lang } = useApp();
   const careers = Object.fromEntries(model!.careers.map(c => [c.id, c]));
   const toggle = (id: string) => update(a => ({
-    interests: a.interests.includes(id) ? a.interests.filter(x => x !== id) : a.interests.length < 3 ? [...a.interests, id] : a.interests,
+    interests: a.interests.includes(id) ? a.interests.filter(x => x !== id) : [...a.interests, id],
   }));
   // an area counts as "general" when most of its careers are non-IT
   const isGeneral = (cs: string[]) => cs.filter(c => careers[c]?.group === "non_it").length * 2 > cs.length;
@@ -78,13 +82,15 @@ function StepInterests() {
   return (
     <div className="step">
       <StepHead title={t.s1_title} hint={t.s1_hint} />
+      <p className="picked sticky-count" aria-live="polite">{t.s1_count(answers.interests.length)}</p>
       {groups.map(([label, items]) => items.length > 0 && (
         <div key={label} className="group">
           <h3 className="group-h">{label}</h3>
           <div className="chips interests">
             {items.map(i => (
               <button key={i.id} className="chip" aria-pressed={answers.interests.includes(i.id)} onClick={() => toggle(i.id)}>
-                {lang === "id" ? i.name_id : i.name_en}
+                <span className="tick" aria-hidden="true" />
+                <span className="chip-nm">{lang === "id" ? i.name_id : i.name_en}</span>
                 <small>{i.careers.map(c => careerName(careers[c])).join(", ")}</small>
               </button>
             ))}

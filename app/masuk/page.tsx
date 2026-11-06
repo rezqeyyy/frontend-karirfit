@@ -14,13 +14,14 @@ export default function LoginPage() {
   const { t, user, recovery, setRecovery } = useApp();
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("login");
+  useEffect(() => { if (new URLSearchParams(window.location.search).get("tab") === "daftar") setTab("register"); }, []);
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [consent, setConsent] = useState(false);
 
   const next = () => {
     const n = new URLSearchParams(window.location.search).get("next");
-    return n && n.startsWith("/") && !n.startsWith("//") ? n : "/tes";
+    return n && n.startsWith("/") && !n.startsWith("//") ? n : "/";
   };
 
   useEffect(() => { if (user && !recovery) router.push(next()); }, [user, recovery, router]);
